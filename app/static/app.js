@@ -248,7 +248,10 @@ function dHead(root, o) {
   h.append(av); root.append(h);
 }
 function section(root, title) { const s = el('section', 'd-sec'); s.append(el('h4', null, title)); root.append(s); return s; }
-function trail(root, title, rows, fmtv) {
+function evLink(parent, url) {
+  if (!url) return; const x = el('a', 'd-ev', 'archive'); x.href = url; x.target = '_blank'; x.rel = 'noopener noreferrer'; parent.append(' ', x);
+}
+function trail(root, title, rows, fmtv, withEv) {
   if (!rows || !rows.length) return;
   const s = section(root, title); const ol = el('ol', 'd-trail');
   rows.forEach((r, i) => {
@@ -256,7 +259,9 @@ function trail(root, title, rows, fmtv) {
     li.append(el('b', null, fmtv(r.value)));
     const span = when(r.first_seen) === when(r.last_seen) ? when(r.first_seen) : when(r.first_seen) + ' – ' + (i === rows.length - 1 ? 'now' : when(r.last_seen));
     li.append(el('span', 'd-when', span));
-    li.append(el('span', 'd-sure', sure(r.confidence) + (r.sightings ? ' · seen ' + r.sightings + '×' : '')));
+    const sr = el('span', 'd-sure', sure(r.confidence) + (r.sightings ? ' · seen ' + r.sightings + '×' : ''));
+    if (withEv) evLink(sr, r.evidence_first);
+    li.append(sr);
     ol.append(li);
   });
   s.append(ol);
@@ -275,7 +280,7 @@ function renderDossier(d, root, k) {
     const olds = uh.filter(r => (r.value || '').toLowerCase() !== (a.current_handle || '').toLowerCase());
     if (olds.length) p.push(`Since ${when(uh[0] && uh[0].first_seen) || when(a.created_at)}, this account has gone by ${uh.length} usernames. Before ${handle} it was ${listJoin(olds.map(r => '@' + r.value + ' (' + when(r.first_seen) + ')'))}.`);
     else p.push(`No earlier usernames turned up — as far as public records show, it has always been ${handle}.`);
-    if (dn.length > 1) p.push(`Its display name has changed ${dn.length === 2 ? 'once' : (dn.length - 1) + ' times'}: ${listJoin(dn.map(r => '“' + r.value + '”'))}.`);
+    if (dn.length > 1) p.push(`Its display name has changed ${dn.length === 2 ? 'once' : (dn.length - 1) + ' times'}: ${listJoin(dn.map(r => '“' + r.value + '” (' + (when(r.first_seen) === when(r.last_seen) ? when(r.first_seen) : when(r.first_seen) + ' – ' + when(r.last_seen)) + ')'))}.`);
     const rel = (d.related || []).filter(r => r.confidence === 'high' || r.links_back_to_target);
     if (rel.length) p.push(`${rel.length === 1 ? 'One other X account appears' : rel.length + ' other X accounts appear'} linked to the same person: ${listJoin(rel.map(r => '@' + r.handle + (r.name ? ' (“' + r.name + '”)' : '')))}.`);
     const strong = (extra.other_profiles || []).filter(x => x.confidence === 'high');
@@ -283,10 +288,27 @@ function renderDossier(d, root, k) {
     p.forEach(t => b.append(el('p', null, t)));
     /* Username history */
     trail(box, 'Username history', uh, v => '@' + v);
-    trail(box, 'Display names', dn, v => v);
-    const av = (d.avatars || []).filter(x => x.value);
-    if (av.length > 1) { const s = section(box, 'Past profile pictures'); const g = el('div', 'd-pics');
-      av.slice(-12).forEach(x => { const f = el('figure'); const im = new Image(); im.referrerPolicy = 'no-referrer'; im.loading = 'lazy'; im.alt = ''; im.src = bigAvatar(x.value); im.onerror = () => f.remove(); f.append(im, el('figcaption', null, when(x.first_seen))); g.append(f); }); s.append(g); }
+    trail(box, `Display names (${dn.length})`, dn, v => v, true);
+    /* Bio history (dated) */
+    const bh = d.bio_history || (d.history || {}).bio || [];
+    if (bh.length) { const s = section(box, `Bio history (${bh.length})`); const ol = el('ol', 'd-trail d-bios');
+      bh.forEach((r, i) => { const last = i === bh.length - 1; const li = el('li', last ? 'now' : '');
+        const span = when(r.first_seen) === when(r.last_seen) ? when(r.first_seen) : when(r.first_seen) + ' – ' + (last && a.live ? 'now' : when(r.last_seen));
+        li.append(el('span', 'd-when', span));
+        const q = el('q', null, (r.value || '').trim() || '(empty bio)'); if (!(r.value || '').trim()) q.className = 'd-empty'; li.append(q);
+        const sr = el('span', 'd-sure', sure(r.confidence) + (r.sightings ? ' · seen ' + r.sightings + '×' : '')); evLink(sr, r.evidence_first); li.append(sr);
+        ol.append(li); }); s.append(ol); }
+    /* Every profile picture found (oldest first), archived copy as fallback */
+    const av = (d.avatars || []).filter(x => x.value || x.live_url);
+    if (av.length) { const s = section(box, `Profile pictures (${av.length})`); const g = el('div', 'd-pics');
+      av.forEach((x, i) => { const f = el('figure'); const ln = el('a'); ln.target = '_blank'; ln.rel = 'noopener noreferrer';
+        const arch = ((x.archived_image_captures || []).find(c => c.wayback_url) || {}).wayback_url;
+        ln.href = arch || bigAvatar(x.value || x.live_url);
+        const im = new Image(); im.referrerPolicy = 'no-referrer'; im.loading = 'lazy'; im.alt = '';
+        im.src = bigAvatar(x.value || x.live_url);
+        im.onerror = () => { if (arch && !im.dataset.f) { im.dataset.f = 1; im.src = arch; } else im.classList.add('d-gone'); };
+        const span = when(x.first_seen) === when(x.last_seen) ? when(x.first_seen) : when(x.first_seen) + ' – ' + (i === av.length - 1 && a.live ? 'now' : when(x.last_seen));
+        ln.append(im); f.append(ln, el('figcaption', null, span)); g.append(f); }); s.append(g); }
     /* Other profiles (related X + pivot hits) */
     const others = [];
     (d.related || []).forEach(r => others.push({title: '@' + r.handle, url: r.permalink || ('https://x.com/' + r.handle), label: sure(r.confidence),

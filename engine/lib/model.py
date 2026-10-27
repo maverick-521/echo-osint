@@ -84,6 +84,9 @@ class Results:
                     if not re.fullmatch(SN, v):
                         continue
             f[k] = v
+        if str(source).startswith(("life-scan", "frozen-handle", "memory.lol")):
+            # v4 guard: tweet-side sightings prove the @handle only - never stamp today's name/bio/avatar on old dates
+            f = {k: v for k, v in f.items() if k == "screen_name"}
         if not f:
             return
         conf = confidence or ("high" if verified else "medium")

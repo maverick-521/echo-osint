@@ -360,8 +360,8 @@ ol.trail b{font-weight:600}.when{color:var(--mut);font-size:13px}.sure{color:var
 .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
 .card{display:block;padding:14px;border-radius:14px;background:var(--card);border:1px solid var(--edge);color:var(--ink);text-decoration:none}
 .card b{display:block}.card .sure{display:block;margin-top:2px}.card p{margin:6px 0 0;font-size:12.5px;color:var(--mut)}
-.pics{display:flex;gap:12px;overflow-x:auto}.pics figure{margin:0;flex:none;text-align:center}
-.pics img{width:56px;height:56px;border-radius:50%;object-fit:cover}.pics figcaption{font-size:11px;color:var(--faint);margin-top:4px}
+.pics{display:flex;flex-wrap:wrap;gap:14px}.pics figure{margin:0;flex:none;text-align:center;width:84px}.pics a{color:inherit}
+.pics img{width:64px;height:64px;border-radius:50%;object-fit:cover;background:#222}ol.bios li{flex-direction:column;gap:2px}ol.bios q{max-width:640px;line-height:1.5;white-space:pre-wrap}ol.bios q:before,ol.bios q:after{color:var(--faint)}a.ev{color:var(--faint);font-size:11px;margin-left:6px}.pics figcaption{font-size:11px;color:var(--faint);margin-top:4px}
 .lim li,.plain li{margin:4px 0;color:var(--mut);font-size:13.5px}.plain{padding-left:18px;list-style:disc}
 .foot{margin-top:36px;color:var(--faint);font-size:12px}details.sources{margin-top:18px;color:var(--faint)}
 details.sources summary{cursor:pointer}
@@ -404,23 +404,37 @@ th{color:var(--faint);font-weight:500}a{color:var(--acc)}
                        f"<span class=sure>{_hesc(r.get('label'))}{extra}</span></li>")
         sec("Username history", f"<ol class=trail>{''.join(lis)}</ol>")
 
-    if B.get("display_names") and len(B["display_names"]) > 1:
+    def _ev(u, t="archive"):
+        return f" <a class=ev href=\"{_hesc(u)}\" target=_blank rel=noopener>{t}</a>" if u else ""
+
+    if B.get("display_names"):
         lis = []
         for r in B["display_names"]:
             cls = " class=now" if r.get("current") else ""
+            seen = f" · seen {r['sightings']}×" if r.get("sightings") else ""
             lis.append(f"<li{cls}><b>{_hesc(r['value'])}</b><span class=when>{_hesc(r.get('when'))}</span>"
-                       f"<span class=sure>{_hesc(r.get('label'))}</span></li>")
-        sec("Display names", f"<ol class=trail>{''.join(lis)}</ol>")
-
-    if B.get("avatars") and len(B["avatars"]) > 1:
+                       f"<span class=sure>{_hesc(r.get('label'))}{seen}{_ev(r.get('evidence'))}</span></li>")
+        sec(f"Display names ({len(B['display_names'])})", f"<ol class=trail>{''.join(lis)}</ol>")
+    if B.get("bios"):
+        lis = []
+        for r in B["bios"]:
+            cls = " class=now" if r.get("current") else ""
+            txt = _hesc(r["value"]) if r.get("value") else "<i>(empty bio)</i>"
+            lis.append(f"<li{cls}><span class=when>{_hesc(r.get('when'))}</span><q>{txt}</q>"
+                       f"<span class=sure>{_hesc(r.get('label'))}{_ev(r.get('evidence'))}</span></li>")
+        sec(f"Bio history ({len(B['bios'])})", f"<ol class=\"trail bios\">{''.join(lis)}</ol>")
+    if B.get("avatars"):
         figs = []
-        for a in B["avatars"][-12:]:
+        for a in B["avatars"]:
             if not a.get("url"):
                 continue
-            figs.append(f"<figure><img src=\"{_hesc(a['url'])}\" alt=\"\" referrerpolicy=\"no-referrer\" loading=lazy>"
-                        f"<figcaption>{_hesc(a.get('when'))}</figcaption></figure>")
+            fb = a.get("fallback")
+            onerr = f" onerror=\"if(this.dataset.f!=1){{this.dataset.f=1;this.src='{_hesc(fb)}'}}\"" if fb and fb != a["url"] else ""
+            figs.append(f"<figure><a href=\"{_hesc(a.get('archived') or a['url'])}\" target=_blank rel=noopener>"
+                        f"<img src=\"{_hesc(a['url'])}\" alt=\"\" referrerpolicy=\"no-referrer\" loading=lazy{onerr}></a>"
+                        f"<figcaption>{_hesc(a.get('when'))}{' · current' if a.get('current') else ''}</figcaption></figure>")
         if figs:
-            sec("Past profile pictures", f"<div class=pics>{''.join(figs)}</div>")
+            sec(f"Profile pictures ({len(figs)})", f"<div class=pics>{''.join(figs)}</div>")
 
     if B["other_profiles"]:
         cards = []

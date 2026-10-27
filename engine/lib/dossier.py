@@ -62,6 +62,23 @@ def big(u):
     return re.sub(r"_(normal|bigger|mini|reasonably_small)(\.\w+)$", r"_400x400\2", u) if u else u
 
 
+def span_of(s, is_last=False):
+    a, b = when(s.get("first_seen")), when(s.get("last_seen"))
+    if a and b and a != b:
+        return f"{a} – {'now' if is_last else b}"
+    return a or b or ""
+
+
+def pfp(a, is_last=False):
+    live = a.get("live_url") if a.get("still_live") else None
+    arch = next((c.get("wayback_url") for c in (a.get("archived_image_captures") or []) if c.get("wayback_url")), None)
+    url = big(a.get("value")) if a.get("value") else live
+    return {"url": url, "fallback": arch or live, "archived": arch, "still_live": a.get("still_live"),
+            "when": span_of(a, is_last), "first": a.get("first_seen"), "last": a.get("last_seen"),
+            "uploaded": a.get("uploaded"), "image_id": a.get("image_id"), "label": sure(a.get("confidence")),
+            "evidence": a.get("evidence_first"), "current": is_last}
+
+
 def handles_of(D):
     acc = D.get("account") or {}
     hs = [acc.get("current_handle")] + [s.get("value") for s in (D.get("username_history") or [])]
@@ -254,6 +271,9 @@ def brief(D):
     acc = D.get("account") or {}
     uh = D.get("username_history") or D.get("history", {}).get("username") or []
     dn = D.get("display_name_history") or D.get("history", {}).get("display_name") or []
+    bh = D.get("bio_history") or D.get("history", {}).get("bio") or []
+    live = bool(acc.get("live"))
+    avs = [a for a in (D.get("avatars") or []) if a.get("value") or a.get("live_url")]
     handle = acc.get("current_handle") or D.get("query") or "?"
     name = acc.get("display_name") or ("@" + handle)
     avatar = big(acc.get("current_avatar"))
@@ -276,8 +296,14 @@ def brief(D):
     if dn and len(dn) > 1:
         overview.append(
             f"Its display name has changed {len(dn) - 1} time{'s' if len(dn) != 2 else ''}: "
-            + _join([f"“{s.get('value')}”" for s in dn]) + "."
+            + _join([f"“{s.get('value')}” ({span_of(s, live and i == len(dn) - 1)})" for i, s in enumerate(dn)]) + "."
         )
+    elif dn:
+        overview.append(f"Only one display name turned up in public archives: “{dn[0].get('value')}”.")
+    if len(bh) > 1:
+        overview.append(f"The bio changed {len(bh) - 1} time{'s' if len(bh) != 2 else ''} (dated list below).")
+    if len(avs) > 1:
+        overview.append(f"{len(avs)} different profile pictures were found (gallery below).")
     if acc.get("bio"):
         overview.append(f"Current bio: “{acc['bio'].strip()}”.")
     bits = []
@@ -387,15 +413,22 @@ def brief(D):
         "bio": (acc.get("bio") or "").strip() or None,
         "overview": overview,
         "username_history": username_history,
-        "display_names": [{"value": s.get("value"), "when": when(s.get("first_seen")),
-                           "label": sure(s.get("confidence")), "current": i == len(dn) - 1}
+        "display_names": [{"value": s.get("value"), "when": span_of(s, live and i == len(dn) - 1),
+                           "first": s.get("first_seen"), "last": s.get("last_seen"),
+                           "label": sure(s.get("confidence")), "current": i == len(dn) - 1,
+                           "sightings": s.get("sightings"), "evidence": s.get("evidence_first"),
+                           "evidence_last": s.get("evidence_last")}
                           for i, s in enumerate(dn)],
+        "bios": [{"value": (s.get("value") or "").strip(), "when": span_of(s, live and i == len(bh) - 1),
+                  "first": s.get("first_seen"), "last": s.get("last_seen"),
+                  "label": sure(s.get("confidence")), "current": i == len(bh) - 1,
+                  "sightings": s.get("sightings"), "evidence": s.get("evidence_first")}
+                 for i, s in enumerate(bh)],
         "other_profiles": other,
         "contacts": contacts,
         "breach_notes": breach_notes,
         "timeline": timeline[:80],
-        "avatars": [{"url": big(a.get("value") or a.get("live_url")), "when": when(a.get("first_seen"))}
-                    for a in (D.get("avatars") or []) if a.get("value") or a.get("live_url")],
+        "avatars": [pfp(a, live and i == len(avs) - 1) for i, a in enumerate(avs)],
         "limits": (extra.get("notes") or []) + [
             "Public archives are incomplete; anything never saved can’t be recovered.",
             "X’s signed-in “About this account” change count is not available to logged-out tools.",

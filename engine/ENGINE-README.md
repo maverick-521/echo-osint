@@ -1,4 +1,4 @@
-# x-osint-hunter v3: X/Twitter account timeline hunter
+# x-osint-hunter v4: X/Twitter account timeline hunter
 
 Rebuilds an account's public history from **free, keyless, public traces**, in the spirit of memory.lol and lolarchiver:
 past **@handles with dates and change windows**, **display names**, **bio / location / website**, **profile pictures**,
@@ -112,3 +112,22 @@ Cloudflare bypasses, and breach-DB email lookup.
 - **X "About this account"** username-change *count* is login-only in a browser; third-party About APIs are freemium.
 - **Login email** is never on public X profiles. We only report addresses the owner pasted into a bio/tweet/archive.
 - Accounts that renamed **before any media tweet** leave no frozen URL; Stream Grab cannot cover accounts created after ~2023-01.
+
+## v4: complete display-name / bio / profile-picture history
+
+Problem fixed: long-lived display names (ones used for many months) could be missing from Deep reports.
+Root causes and fixes (generic, no account-specific logic):
+
+| cause | fix |
+|---|---|
+| Wayback circuit breaker was permanent: one burst of 504s and every later CDX lookup in the run was skipped | `net.cdx` retries with backoff; breaker now *pauses* 20-90 s then lets traffic through (`history_coverage.wayback` in JSON shows trips) |
+| Raw paged tweet-capture index was fragile (one failed page query => "zero captures" for a handle) | `cdx_status_daily`: one day-collapsed CDX query per handle/host covering its whole archived life; paging is only the fallback; failed handles are retried at the end |
+| Tweet captures were sampled per handle, thinning months | all handles pooled and round-robined by month (`status_max` deep 260 / thorough 150 / fast 40) |
+| Nobody checked which months had no profile evidence | `history.gap_fill`: every month from account creation to now without a dated, owner-verified display name gets an archived capture analysed; if none was inventoried, a month-bounded CDX query is run for the handle in use then |
+| Change windows only bisected 6 rounds | 9 rounds in Deep (name, bio, avatar, handle, location) |
+| Every run started from scratch | `cache/x-<user id>.json` + earlier report JSONs of the same permanent id are merged (owner-verified archive evidence only, original links kept, flagged `carried_over`) |
+| Tweet-side sightings could stamp today's name on old dates | `Results.observe` strips name/bio/avatar from life-scan / frozen-handle / memory.lol sightings |
+
+Dossier (HTML report + app) now always lists: the full display-name trail with dates + archive link, a dated bio trail
+(empty bios shown), and every profile picture found (oldest first, archived image as fallback when the live one is gone).
+`history_coverage` in the JSON lists months that still have no profile evidence and why.

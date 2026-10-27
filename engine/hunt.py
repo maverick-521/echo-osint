@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ECHO / x-osint-hunter v3 - rebuild the full public history of an X/Twitter account from free traces.
+ECHO / x-osint-hunter v4 - rebuild the full public history of an X/Twitter account from free traces.
 
   python3 hunt.py <username|user_id> [--fast|--deep] [--snapshots N] [--quiet]
 
@@ -26,15 +26,16 @@ import threading  # noqa: E402
 from lib.timeline import build, avatar_id, norm_key  # noqa: E402
 from lib.report import to_markdown, to_html, console  # noqa: E402
 from lib import dossier as DS  # noqa: E402
+from lib import history as H  # noqa: E402
 
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "out")
 
 MODES = {
-    "thorough": dict(budget=660, status_pages=8, status_max=90, per_year=3, profile_cap=48, refine=50, avatars=24,
+    "thorough": dict(budget=780, status_pages=8, status_max=150, gap_queries=18, refine_rounds=7, per_month=3, per_year=3, profile_cap=48, refine=50, avatars=24,
                      id_max=30, misc_max=16, chain_rounds=3, inventory_s=240, deep=False),
-    "fast": dict(budget=200, status_pages=1, status_max=25, per_year=1, profile_cap=12, refine=10, avatars=10,
+    "fast": dict(budget=220, status_pages=1, status_max=40, gap_queries=4, refine_rounds=4, per_month=2, per_year=1, profile_cap=12, refine=10, avatars=10,
                  id_max=10, misc_max=6, chain_rounds=1, inventory_s=120, deep=False),
-    "deep": dict(budget=1200, status_pages=10, status_max=120, per_year=4, profile_cap=60, refine=60, avatars=30,
+    "deep": dict(budget=1500, status_pages=10, status_max=260, gap_queries=40, refine_rounds=9, per_month=4, per_year=4, profile_cap=60, refine=60, avatars=30,
                  id_max=40, misc_max=20, chain_rounds=4, inventory_s=300, deep=True),
 }
 
@@ -133,10 +134,11 @@ class Hunt:
         for h in handles:
             pick += S.pick_profile_samples([x for x in prof if x["handle"] == h], c["per_year"],
                                            max(6, c["profile_cap"] // max(len(handles), 1)))
-        st = found.get("status", [])
-        per = max(10, c["status_max"] // max(1, len({x["handle"] for x in st}) or 1))
-        for h in handles:
-            pick += S.pick_spread([x for x in st if x["handle"] == h], per)
+        # v4: sample tweet captures over the account's whole *timeline* (all handles pooled, round-robin by month),
+        # not per handle - per-handle quotas thinned out months and dropped names that lasted most of a year.
+        st = [x for x in found.get("status", []) if (x["timestamp"], x["original"]) not in self.done]
+        months = len({x["timestamp"][:6] for x in st})
+        pick += S.pick_spread(st, min(c["status_max"], max(12, months * c.get("per_month", 3))))
         pick += S.pick_spread(found.get("id", []), c["id_max"], prefer_json=False)
         pick += S.pick_spread(found.get("misc", []), c["misc_max"], prefer_json=False)
         return [p for p in pick if (p["timestamp"], p["original"]) not in self.done]
@@ -173,7 +175,7 @@ class Hunt:
         """Binary-search between captures that disagree, to tighten every 'changed between' window."""
         left = self.cfg["refine"]
         rounds = 0
-        while left > 0 and self.B.ok(60) and rounds < 6:
+        while left > 0 and self.B.ok(60) and rounds < self.cfg.get("refine_rounds", 6):
             rounds += 1
             seq = []
             for k, f in self.done.items():
@@ -228,11 +230,32 @@ class Hunt:
         if len(av) > len(todo):
             self.R.note(f"only the {len(todo)} most recent of {len(av)} avatars were checked live/in the image archive (use thorough mode / larger budget)")
 
+    def retry_status(self):
+        """Handles whose tweet-capture index failed earlier (archive.org 504 bursts) get one more day-index try."""
+        R = self.R
+        for h in list(self.scanned):
+            if not self.B.ok(120):
+                return
+            got = sum((v or {}).get("usable_captures", 0) for v in (R.status_scans.get(h) or
+                      next((R.status_scans[k] for k in R.status_scans if k.lower() == h), {})).values())
+            if got:
+                continue
+            for host in ("twitter.com", "x.com"):
+                sink = []
+                S.cdx_status_daily(R, h, host, sink)
+                for cap in sink:
+                    self.pool.setdefault((cap["timestamp"], cap["original"]), cap)
+                if sink:
+                    log(f"status-index retry: @{h} on {host} -> {len(sink)} day-captures")
+                    self.analyse(S.pick_spread([c for c in sink if (c["timestamp"], c["original"]) not in self.done],
+                                               self.cfg["status_max"] // 2), f"retry @{h}")
+
     # ------------------------------------------------------------ run
     def run(self, mode):
         t0 = time.time()
         R = self.R
         self.live()
+        H.load_prior(R)
         # v3: the life-span frozen-handle scan (Nitter search + embed endpoint) runs in parallel with the
         # Wayback inventory from the very start, so it can never be starved by a slow archive.org.
         level = "deep" if self.cfg.get("deep") else ("fast" if self.cfg.get("fast") else "thorough")
@@ -260,6 +283,14 @@ class Hunt:
                 found2, hs2 = self.inventory(new_h[:4])
                 self.analyse(self.select(found2, hs2), "frozen former handles")
                 self.refine()
+        # v4: month-by-month completeness pass for display name / bio / avatar.
+        if self.B.ok(120):
+            self.retry_status()
+        for _ in range(2):
+            if not self.B.ok(120) or not H.gap_fill(self, self.cfg.get("gap_queries", 10)):
+                break
+        if self.B.ok(90):
+            self.refine()
         S.find_related(R, self.B)
         if self.cfg.get("deep") and self.B.ok(60):
             SD.run_deep_sources(R, self.B, deep=True)
@@ -270,10 +301,21 @@ class Hunt:
         hist, timeline, metrics = build(R)
         if hist["avatar"]:
             self.avatars(hist)
+        H.save_cache(R)
+        self.coverage = H.coverage_report(R, self.pool)
+        gaps = self.coverage.get("months_archived_but_unsampled") or []
+        if gaps:
+            R.note(f"{len(gaps)} archived month(s) still have no dated display-name evidence "
+                   f"({', '.join(gaps[:8])}{' ...' if len(gaps) > 8 else ''}) - budget/archive.org limits; re-run Deep later "
+                   "(earlier findings are kept in the cross-run cache)")
         if net.CFG.get("wayback_offline"):
             R.note("archive.org (Wayback Machine) was temporarily offline / overloaded during this run, so archived "
                    "profile & tweet pages (the main source of old display names, bios, avatars and banners) could not be "
                    "read. Re-run later for full pre-2025 profile history; the tweet-based username scan still ran.")
+        if net.HTTP.storms or net.HTTP.rate_limited.get("web.archive.org"):
+            R.note(f"archive.org rate-limited this run ({net.HTTP.rate_limited.get('web.archive.org', 0)} HTTP 429 replies on "
+                   "capture fetches) - some archived profile/tweet captures could not be read; dated history from earlier runs "
+                   "of this same user id was carried over. Re-run Deep in an hour for the remaining months.")
         if not self.B.ok(0):
             R.note(f"time budget ({self.cfg['budget']}s) ran out - some captures were not analysed; rerun with a larger --budget")
         if len(hist["screen_name"]) <= 1:
@@ -323,6 +365,7 @@ class Hunt:
                               ("github_mentions", "hn_mentions", "reddit_mentions", "commoncrawl",
                                "ghostarchive", "socialblade", "earliest_status_cdx") if k in R.raw},
             "id_pages": R.id_pages[:200],
+            "history_coverage": dict(getattr(self, "coverage", {}) or {}, wayback=net.wayback_health()),
             "coverage": {"observations": len(R.obs), "verified_observations": sum(o["verified"] for o in R.obs),
                          "captures_available": len(pool), "captures_analysed": len(self.done),
                          "profile_captures": sum(c["kind"] == "profile" for c in pool),
@@ -377,9 +420,9 @@ def main():
             log(f"dossier enrich skipped: {type(e).__name__}: {e}")
     os.makedirs(a.out, exist_ok=True)
     base = os.path.join(a.out, re.sub(r"[^A-Za-z0-9_]", "_", h.q))
-    with open(base + ".json", "w") as f:
+    with open(base + ".json", "w", encoding="utf-8") as f:
         json.dump(D, f, indent=2, ensure_ascii=False, default=lambda x: sorted(x) if isinstance(x, set) else str(x))
-    with open(base + "-report.md", "w") as f:
+    with open(base + "-report.md", "w", encoding="utf-8") as f:
         f.write(to_markdown(D))
     try:
         with open(base + "-report.html", "w", encoding="utf-8") as f:

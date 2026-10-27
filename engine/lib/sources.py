@@ -223,10 +223,57 @@ def cdx_profile_caps(R, handle):
     return caps
 
 
+def _status_rows_to_sink(R, rows, handle, host, sink, info, seen):
+    for r in rows:
+        if r.get("statuscode") not in ("200", "-"):
+            continue
+        m = STATUS_RX.search(r.get("original", ""))
+        mt = r.get("mimetype") or ""
+        if not m or ("html" not in mt and "json" not in mt):
+            continue
+        k = (m.group(1), r["timestamp"][:8])
+        if k in seen:
+            continue
+        seen.add(k)
+        sink.append(dict(r, host=host, kind="status", handle=handle))
+        info["usable_captures"] = info.get("usable_captures", 0) + 1
+        d = ts_to_iso(r["timestamp"])
+        info["first"] = min(filter(None, [info.get("first"), d]))
+        info["last"] = max(filter(None, [info.get("last"), d]))
+
+
+def cdx_status_daily(R, handle, host, sink, frm=None, to=None, limit=6000):
+    """v4: one day-collapsed CDX query over <host>/<handle>/status/ - at most one capture per day, across the
+    handle's whole archived life. Far cheaper than paging the raw index and it never skips months, which is what
+    long-lived display names / bios / avatars need. Returns rows added (or None on failure)."""
+    p = {"url": f"{host}/{handle}/status/", "matchType": "prefix", "fl": "timestamp,original,statuscode,mimetype",
+         "collapse": "timestamp:8", "limit": str(limit)}
+    if frm:
+        p["from"] = frm
+    if to:
+        p["to"] = to
+    try:
+        rows = cdx(p, timeout=120, lane="heavy")
+    except Exception as e:
+        R.fail(f"wayback-cdx daily {host}/{handle}/status/" + (f" {frm}-{to}" if frm else ""), e)
+        return None
+    with R.lock:
+        info = R.status_scans.setdefault(handle, {}).setdefault(host, {"pages": None, "pages_read": 0, "usable_captures": 0})
+        info["daily_index"] = True
+    n0 = len(sink)
+    _status_rows_to_sink(R, rows, handle, host, sink, info, {(STATUS_RX.search(c["original"]).group(1), c["timestamp"][:8])
+                                                           for c in sink if STATUS_RX.search(c.get("original", ""))})
+    R.ok("wayback-cdx tweet captures (day index)")
+    return len(sink) - n0
+
+
 def cdx_status_caps(R, handle, host, max_pages, budget, sink):
     """Archived tweet URLs under <host>/<handle>/status/. CDX paging; huge accounts get evenly-spaced page samples.
     Rows are appended to `sink` as they arrive so a timed-out scan still yields partial data."""
     prefix = f"{host}/{handle}/status/"
+    got = cdx_status_daily(R, handle, host, sink)
+    if got is not None:
+        return sink   # day index answered (even if empty): it covers the handle's whole life; paging adds nothing
     try:
         n = cdx_num_pages(prefix)
     except Exception as e:

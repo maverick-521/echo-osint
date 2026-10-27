@@ -239,8 +239,10 @@ button,.chip{font:inherit}
 .d-trail b{font-weight:600;overflow-wrap:anywhere}
 .d-when{color:var(--mut);font-size:13px;font-variant-numeric:tabular-nums}
 .d-sure{color:var(--faint);font-size:12px}
-.d-pics{display:flex;gap:12px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
-.d-pics figure{margin:0;flex:none;text-align:center}
+.d-pics{display:flex;flex-wrap:wrap;gap:14px;padding-bottom:4px}
+.d-pics figure{margin:0;flex:none;text-align:center;width:84px}.d-pics img.d-gone{opacity:.25}
+.d-bios li{flex-direction:column;gap:2px}.d-bios q{line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}.d-bios q.d-empty{font-style:italic;color:var(--faint)}
+.d-ev{color:var(--faint);font-size:11px;text-decoration:underline}
 .d-pics img{width:56px!important;height:56px;max-width:none!important;border-radius:50%!important;object-fit:cover;box-shadow:0 0 0 1px rgba(255,255,255,.1)}
 .d-pics figcaption{font-size:11px;color:var(--faint);margin-top:4px}
 .d-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}

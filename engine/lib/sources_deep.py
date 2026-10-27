@@ -354,7 +354,7 @@ def src_earliest_status_probe(R, handle, budget):
     """Force a CDX look specifically at the *earliest* archived tweets (pre-gap filler)."""
     name = f"earliest-tweet CDX @{handle}"
     try:
-        rows = cdx({"url": f"twitter.com/{handle}/status/*", "matchType": "prefix",
+        rows = cdx({"url": f"twitter.com/{handle}/status/", "matchType": "prefix",
                     "fl": "timestamp,original,statuscode,mimetype", "filter": "statuscode:200|statuscode:-",
                     "from": "2006", "to": "20260326", "limit": 40, "showResumeKey": "false"},
                    timeout=90, lane="heavy")
@@ -375,7 +375,7 @@ def src_earliest_status_probe(R, handle, budget):
             R.note(f"pre-2026-03 Wayback tweet captures under @{handle}: {len(caps)} "
                    f"({ts_to_iso(caps[0]['timestamp'])} → {ts_to_iso(caps[-1]['timestamp'])})")
         else:
-            R.note(f"pre-2026-03 Wayback: zero tweet captures under @{handle} "
+            R.note(f"pre-2026-03 Wayback: zero tweet captures under @{handle} for this date window "
                    "(renames hide old tweets under the old handle's URL — frozen-handle / id-keyed paths needed)")
             R.ok(name + " (empty)")
         return caps
