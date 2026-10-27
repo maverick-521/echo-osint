@@ -1,0 +1,8 @@
+.venv/
+reports/
+__pycache__/
+echo.config.json
+.echo_access_key
+.echo_public_url
+deploy/cloudflared*
+deploy/*.log

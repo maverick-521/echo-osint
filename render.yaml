@@ -1,0 +1,16 @@
+# Render Blueprint: New + > Blueprint > pick this repo. Render asks for ECHO_PIN (keep it private).
+services:
+  - type: web
+    name: echo
+    runtime: docker
+    plan: free
+    healthCheckPath: /healthz
+    envVars:
+      - key: ECHO_BIND
+        value: cloud
+      - key: ECHO_PIN
+        sync: false
+      - key: ECHO_SECRET
+        generateValue: true
+      - key: HIBP_API_KEY
+        sync: false

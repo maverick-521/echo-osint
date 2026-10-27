@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e0f12">
+<meta name="color-scheme" content="dark">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ECHO">
+<meta name="format-detection" content="telephone=no">
+<title>ECHO</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="/static/icon-192.png">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="ambient" aria-hidden="true"><i class="f1"></i><i class="f2"></i><i class="f3"></i></div>
+
+<div id="ptr" class="ptr" aria-hidden="true">
+  <div class="ptr-rings"><i></i><i></i><i></i></div>
+  <span id="ptr-label">Pull to re-echo</span>
+</div>
+
+<div id="sheet" class="sheet">
+<header class="top">
+  <div class="mark" aria-hidden="true"><i></i><i></i><i></i><b></b></div>
+  <div>
+    <h1>ECHO</h1>
+    <p class="acronym">Evidence Continuum of Handle Origins</p>
+  </div>
+  <button id="phone-btn" class="chip ghost" type="button" hidden>Open on phone</button>
+</header>
+<p class="sub">Old usernames leave echoes. This finds them — and tells you where your details have leaked.</p>
+
+<main>
+  <section class="glass" id="composer">
+    <div class="seg" id="seg" role="tablist" aria-label="Lookup type">
+      <span class="seg-thumb" aria-hidden="true"></span>
+      <button role="tab" data-kind="auto" aria-selected="true">Auto</button>
+      <button role="tab" data-kind="x">X history</button>
+      <button role="tab" data-kind="pivot">Multi-platform</button>
+      <button role="tab" data-kind="breach">Leak check</button>
+    </div>
+
+    <form id="form" autocomplete="off">
+      <label class="field">
+        <span class="field-label" id="target-label">Who are we listening for?</span>
+        <input id="target" placeholder="@username, user id, email, ig:name or a profile link" spellcheck="false" autocapitalize="off" autocorrect="off" enterkeyhint="go" required>
+      </label>
+      <label class="field" id="phone-field" hidden>
+        <span class="field-label">Phone <small>optional · with country code</small></span>
+        <input id="phone" type="tel" inputmode="tel" placeholder="+44 7700 900123" spellcheck="false">
+      </label>
+      <div id="hint" class="hint" aria-live="polite"></div>
+
+      <div class="depth" id="depth" role="radiogroup" aria-label="Depth">
+        <label><input type="radio" name="mode" value="fast" checked><span>Fast<small>~3 min</small></span></label>
+        <label><input type="radio" name="mode" value="thorough"><span>Thorough<small>~8–12 min</small></span></label>
+        <label class="deep-opt"><input type="radio" name="mode" value="deep"><span>Deep<small>~15–25 min</small></span></label>
+      </div>
+
+      <div class="actions">
+        <button id="run" class="primary" type="submit"><span>Run scan</span></button>
+        <button id="cancel" type="button" class="ghost" hidden>Cancel</button>
+      </div>
+    </form>
+
+    <details class="about">
+      <summary>What each mode does</summary>
+      <p><b>X history</b> — every former @username with dates, display names, bios, avatars and banners, from public archives.</p>
+      <p><b>Multi-platform</b> — emails, <code>ig:</code> / <code>tiktok:</code> / <code>gh:</code> / <code>reddit:</code> / <code>yt:</code> / <code>tg:</code> / <code>bsky:</code> handles or profile links across ~23 public sites, with confidence labels.</p>
+      <p><b>Leak check</b> — is an email, phone or username in known data breaches? Free public sources only, metadata only: no leaked passwords are ever downloaded or stored.</p>
+      <p class="mut">The Internet Archive often rate-limits (HTTP 429); runs are time-boxed and keep what they got. Only public, free sources — no logins, no paid databases.</p>
+    </details>
+    <div id="error" class="error" role="alert" hidden></div>
+  </section>
+
+  <section class="glass" id="progress" hidden>
+    <div class="listen">
+      <div class="dial" id="dial">
+        <span class="rip" aria-hidden="true"><i></i><i></i><i></i></span>
+        <svg viewBox="0 0 120 120" aria-hidden="true">
+          <defs>
+            <linearGradient id="sweep-g" gradientUnits="userSpaceOnUse" x1="112" y1="58" x2="100" y2="93">
+              <stop offset="0" stop-color="#dfe5ee" stop-opacity="0"/>
+              <stop offset="1" stop-color="#dfe5ee" stop-opacity=".9"/>
+            </linearGradient>
+          </defs>
+          <circle class="ticks" cx="60" cy="60" r="44"/>
+          <circle class="track" cx="60" cy="60" r="52"/>
+          <circle class="arc" id="dial-arc" cx="60" cy="60" r="52"/>
+          <g class="sweep"><circle cx="60" cy="60" r="52"/><circle class="head" cx="101.25" cy="91.66" r="1.6"/></g>
+        </svg>
+        <div class="dial-face" role="timer" aria-live="off">
+          <span id="dial-t">0:00</span>
+          <small id="dial-sub">elapsed</small>
+        </div>
+      </div>
+      <div class="listen-text">
+        <h2 id="status">Listening…</h2>
+        <p id="live" class="live" aria-live="polite">Sending the first ping</p>
+        <span id="elapsed" class="meta"></span>
+      </div>
+    </div>
+    <div class="rail" id="rail" aria-hidden="true"><i class="fill" id="rail-fill"></i><i class="glint"></i></div>
+    <div class="skeleton" id="skeleton" aria-hidden="true"><i></i><i></i><i class="s"></i></div>
+    <details class="logbox"><summary>Raw log</summary><pre id="log"></pre></details>
+  </section>
+
+  <section class="glass" id="result" hidden>
+    <div class="row">
+      <h2 id="result-title">Dossier</h2>
+      <span class="dl">
+        <a id="dl-html" class="chip" hidden>.html</a>
+        <a id="dl-md" class="chip">.md</a>
+        <a id="dl-json" class="chip">.json</a>
+      </span>
+    </div>
+    <div id="leak-view"></div>
+    <article id="report"></article>
+  </section>
+
+  <section class="glass" id="past">
+    <div class="row"><h2>Past scans</h2><span class="meta">pull down to refresh</span></div>
+    <ul id="history"></ul>
+  </section>
+
+  <footer id="foot" class="foot"></footer>
+</main>
+</div>
+
+<div id="phone-sheet" class="modal" hidden>
+  <div class="glass modal-card" role="dialog" aria-label="Open on phone">
+    <h2>Open on your phone</h2>
+    <p>Open this link in Safari on your iPhone, then <b>Share → Add to Home Screen</b>.</p>
+    <code id="phone-url" class="url"></code>
+    <div class="actions"><button id="copy-url" class="primary" type="button"><span>Copy link</span></button><button id="close-sheet" class="ghost" type="button">Done</button></div>
+    <p class="mut small">Private link — don't share it. Remote links ask for your ECHO PIN; Wi-Fi links carry a pairing key.</p>
+  </div>
+</div>
+<div id="toast" class="toast" hidden></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

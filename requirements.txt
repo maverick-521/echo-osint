@@ -1,0 +1,7 @@
+# ECHO - tested on Python 3.9-3.13
+requests>=2.31,<3
+urllib3>=2,<3
+Flask>=3.0,<4
+Markdown>=3.5,<4
+nh3>=0.2,<1
+pywebview>=5,<7; sys_platform == "win32"
